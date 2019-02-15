@@ -1,60 +1,84 @@
-resource "github_repository" "main" {
-  count       = "${local.update_circleci}"
-  name        = "${var.repo_name}"
-  description = "${var.repo_description}"
+data "aws_sns_topic" "this" {
+  count = "${(1 - var.create_sns_topic) * var.create}"
 
-  private = "${var.private_repo}"
+  name = "${var.sns_topic_name}"
+}
 
-  # Settings
-  has_issues         = "${var.has_issues}"
-  has_wiki           = "${var.has_wiki}"
-  allow_merge_commit = "${var.allow_merge_commit}"
-  allow_squash_merge = "${var.allow_squash_merge}"
-  allow_rebase_merge = "${var.allow_rebase_merge}"
-  auto_init          = "${var.auto_init}"
-  gitignore_template = "${var.gitignore_template}"
-  license_template   = "${var.license_template}"
+resource "aws_sns_topic" "this" {
+  count = "${var.create_sns_topic * var.create}"
 
-  provisioner "local-exec" {
-    on_failure = "continue"
-    command    = "echo ${data.template_file.circleci_api_sh.rendered} >> ./circleci_api.sh && chmod +x ./circleci_api.sh && ./circleci_api.sh"
+  name = "${var.sns_topic_name}"
+}
+
+locals {
+  sns_topic_arn = "${element(concat(aws_sns_topic.this.*.arn, data.aws_sns_topic.this.*.arn, list("")), 0)}"
+}
+
+resource "aws_sns_topic_subscription" "sns_notify_slack" {
+  count = "${var.create}"
+
+  topic_arn = "${local.sns_topic_arn}"
+  protocol  = "lambda"
+  endpoint  = "${aws_lambda_function.notify_slack.0.arn}"
+}
+
+resource "aws_lambda_permission" "sns_notify_slack" {
+  count = "${var.create}"
+
+  statement_id  = "AllowExecutionFromSNS"
+  action        = "lambda:InvokeFunction"
+  function_name = "${aws_lambda_function.notify_slack.0.function_name}"
+  principal     = "sns.amazonaws.com"
+  source_arn    = "${local.sns_topic_arn}"
+}
+
+data "null_data_source" "lambda_file" {
+  inputs {
+    filename = "${substr("${path.module}/functions/notify_slack.py", length(path.cwd) + 1, -1)}"
   }
 }
 
-data "template_file" "circleci_api_sh" {
-  count    = "${local.update_circleci}"
-  template = "${file("${path.module}/files/circleci_api.sh.tpl")}"
-
-  vars {
-    cci_token    = "${var.circleci_token}"
-    vcs          = "${var.vcs}"
-    github_org   = "${var.github_org}"
-    git_repo     = "${var.repo_name}"
-    github_token = "${var.github_token}"
+data "null_data_source" "lambda_archive" {
+  inputs {
+    filename = "${substr("${path.module}/functions/notify_slack.zip", length(path.cwd) + 1, -1)}"
   }
 }
 
-resource "github_team_repository" "main" {
-  count      = "${var.team_count * local.update_circleci}"
-  team_id    = "${lookup(var.teams[count.index], "team")}"
-  repository = "${github_repository.main.name}"
-  permission = "${lookup(var.teams[count.index], "perms")}"
+data "archive_file" "notify_slack" {
+  count = "${var.create}"
+
+  type        = "zip"
+  source_file = "${data.null_data_source.lambda_file.outputs.filename}"
+  output_path = "${data.null_data_source.lambda_archive.outputs.filename}"
 }
 
-resource "github_branch_protection" "main" {
-  count          = "${local.enable_branch_protection * local.update_circleci > 0 ? 1 : 0}"
-  repository     = "${github_repository.main.name}"
-  branch         = "master"
-  enforce_admins = "${var.enforce_admins}"
+resource "aws_lambda_function" "notify_slack" {
+  count = "${var.create}"
 
-  required_status_checks {
-    strict   = "${var.strict_status_checks}"
-    contexts = ["${var.contexts}"]
+  filename = "${path.module}/functions/notify_slack.zip"
+
+  function_name = "${var.lambda_function_name}"
+
+  role             = "${aws_iam_role.lambda.arn}"
+  handler          = "notify_slack.lambda_handler"
+  source_code_hash = "${var.use_source_hash ? data.archive_file.notify_slack.0.output_base64sha256 : ""}"
+  runtime          = "python3.6"
+  timeout          = 30
+  kms_key_arn      = "${var.kms_key_arn}"
+
+  environment {
+    variables = {
+      SLACK_WEBHOOK_URL = "${var.slack_webhook_url}"
+      SLACK_CHANNEL     = "${var.slack_channel}"
+      SLACK_USERNAME    = "${var.slack_username}"
+      SLACK_EMOJI       = "${var.slack_emoji}"
+    }
   }
 
-  required_pull_request_reviews {
-    dismiss_stale_reviews = "${var.dismiss_stale_reviews}"
-    dismissal_users       = ["${var.dismissal_users}"]
-    dismissal_teams       = ["${var.dismissal_teams}"]
+  lifecycle {
+    ignore_changes = [
+      "filename",
+      "last_modified",
+    ]
   }
 }

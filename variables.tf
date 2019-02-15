@@ -1,94 +1,50 @@
-variable "repo_name" {}
-
-variable "repo_description" {}
-
-variable "private_repo" {
-  default = true
+variable "create" {
+  description = "Whether to create all resources"
+  default     = true
 }
 
-variable "has_issues" {
-  default = true
+variable "create_sns_topic" {
+  description = "Whether to create new SNS topic"
+  default     = true
 }
 
-variable "has_wiki" {
-  default = true
+variable "create_with_kms_key" {
+  description = "Whether to create resources with KMS encryption"
+  default     = false
 }
 
-variable "allow_merge_commit" {
-  default = true
+variable "lambda_function_name" {
+  description = "The name of the Lambda function to create"
+  default     = "notify_slack"
 }
 
-variable "allow_squash_merge" {
-  default = true
+variable "sns_topic_name" {
+  description = "The name of the SNS topic to create"
 }
 
-variable "allow_rebase_merge" {
-  default = true
+variable "slack_webhook_url" {
+  description = "The URL of Slack webhook"
 }
 
-variable "auto_init" {
-  default = true
+variable "slack_channel" {
+  description = "The name of the channel in Slack for notifications"
 }
 
-variable "gitignore_template" {
-  default = "Terraform"
+variable "slack_username" {
+  description = "The username that will appear on Slack messages"
 }
 
-variable "license_template" {
-  default = "mit"
+variable "slack_emoji" {
+  description = "A custom emoji that will appear on Slack messages"
+  default     = ":aws:"
 }
 
-variable "teams" {
-  type = "list"
+variable "kms_key_arn" {
+  description = "ARN of the KMS key used for decrypting slack webhook url"
+  default     = ""
 }
 
-variable "team_count" {}
-
-variable "enforce_admins" {
-  default = true
+variable "use_source_hash" {
+  description = "Turn on/off zip file hash check - Issue 21"
+  default     = true
 }
-
-variable "strict_status_checks" {
-  default = true
-}
-
-variable "contexts" {
-  type    = "list"
-  default = [""]
-}
-
-variable "dismiss_stale_reviews" {
-  default = true
-}
-
-variable "dismissal_users" {
-  type    = "list"
-  default = [""]
-}
-
-variable "dismissal_teams" {
-  type    = "list"
-  default = [""]
-}
-
-variable "enable_branch_protection" {
-  default = false
-}
-
-variable "circleci_token" {
-  default = ""
-}
-
-variable "update_circleci" {
-  default = false
-}
-
-variable "github_org" {
-  default = ""
-}
-
-variable "vcs" {
-  default = "github"
-}
-
-variable "github_token" {}
